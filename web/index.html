@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>HypeRate WS Minimal Demo</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; line-height: 1.4; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+    label { display: grid; gap: 6px; font-size: 14px; }
+    input { padding: 10px 12px; font-size: 14px; min-width: 260px; }
+    button { padding: 10px 14px; font-size: 14px; cursor: pointer; }
+    .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; border: 1px solid #ddd; }
+    pre { background: #0b0f14; color: #e6edf3; padding: 14px; border-radius: 12px; overflow: auto; max-height: 55vh; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  </style>
+</head>
+<body>
+  <h1>HypeRate WebSocket – Minimal Heart Rate Demo</h1>
+  <p>
+    Connects to <code>wss://app.hyperate.io</code>, joins <code>hr:&lt;deviceId&gt;</code>,
+    and prints <code>hr_update</code> messages.
+  </p>
+
+<p class="pill" style="display:inline-block; margin: 8px 0 16px 0;">
+  Public demo: enter your <strong>Device ID</strong> and <strong>API Key</strong> locally. Keys are never shipped with this page.
+</p>
+
+  <div class="row">
+    <label>
+      Device ID
+      <input id="deviceId" placeholder="abc123" />
+    </label>
+    <label>
+      API Key (token)
+      <input id="apiKey" placeholder="YOUR_API_KEY" />
+    </label>
+
+    <button id="connectBtn">Connect</button>
+    <button id="disconnectBtn" disabled>Disconnect</button>
+
+    <label style="display:flex;gap:8px;align-items:center;font-size:12px;">
+      <input type="checkbox" id="remember" /> Remember locally
+    </label>
+    <button id="clearBtn" type="button">Clear saved</button>
+
+    <span class="pill" id="status">disconnected</span>
+    <span class="pill" id="hr">HR: —</span>
+  </div>
+<h2>Log</h2>
+  <pre id="log"></pre>
+
+  <script>
+    // ---- Quick config (optional): loaded from config.js if present ----
+    // Optional: you can define window.HYPERATE_CONFIG in the console for quick testing:
+// window.HYPERATE_CONFIG = { DEVICE_ID: "abc123", API_KEY: "..." }
+const CONFIG = window.HYPERATE_CONFIG || {};
+
+// Local-only persistence (never leaves the browser)
+const STORAGE_KEY = "hyperate_ws_demo_v1";
+const saved = (() => {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"); }
+  catch { return null; }
+})();
+
+const DEVICE_ID = (saved?.deviceId || CONFIG.DEVICE_ID || "").toString();
+const API_KEY   = (saved?.apiKey   || CONFIG.API_KEY   || "").toString();
+const $ = (id) => document.getElementById(id);
+
+    const logEl = $("log");
+    const statusEl = $("status");
+    const hrEl = $("hr");
+    const connectBtn = $("connectBtn");
+    const disconnectBtn = $("disconnectBtn");
+    const deviceIdInput = $("deviceId");
+    const apiKeyInput = $("apiKey");
+    const rememberEl = $("remember");
+    const clearBtn = $("clearBtn");
+
+    let ws = null;
+    let heartbeatTimer = null;
+    let joinRef = "1";
+
+    function log(...args) {
+      const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ");
+      logEl.textContent += line + "\n";
+      logEl.scrollTop = logEl.scrollHeight;
+      console.log(...args);
+    }
+
+    function setStatus(text) {
+      statusEl.textContent = text;
+    }
+
+    function setHR(value) {
+      hrEl.textContent = `HR: ${value ?? "—"}`;
+    }
+
+    function startHeartbeat() {
+      stopHeartbeat();
+      heartbeatTimer = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            event: "ping",
+            payload: { timestamp: Date.now() }
+          }));
+          log("[ping] sent");
+        }
+      }, 15000);
+    }
+
+    function stopHeartbeat() {
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
+
+    function connect() {
+      const deviceId = deviceIdInput.value.trim();
+      const apiKey = apiKeyInput.value.trim();
+
+      if (!deviceId || !apiKey) {
+        alert("Please enter both Device ID and API Key.");
+        return;
+      }
+
+      const url = `wss://app.hyperate.io/ws/${encodeURIComponent(deviceId)}?token=${encodeURIComponent(apiKey)}`;
+
+// Save or clear locally (optional)
+try {
+  if (rememberEl.checked) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ deviceId, apiKey }));
+    log("[local] saved credentials (localStorage)");
+  } else {
+    localStorage.removeItem(STORAGE_KEY);
+  }
+} catch {}
+
+      log("Connecting to:", url);
+      setStatus("connecting");
+      setHR(null);
+
+      ws = new WebSocket(url);
+
+      ws.onopen = () => {
+        log("[open] connected");
+        setStatus("connected");
+        connectBtn.disabled = true;
+        disconnectBtn.disabled = false;
+
+        // Join heart rate channel
+        const joinMsg = {
+          topic: `hr:${deviceId}`,
+          event: "phx_join",
+          payload: {},
+          ref: joinRef
+        };
+        ws.send(JSON.stringify(joinMsg));
+        log("[send] phx_join", joinMsg);
+
+        startHeartbeat();
+      };
+
+      ws.onmessage = (event) => {
+        let msg;
+        try {
+          msg = JSON.parse(event.data);
+        } catch (e) {
+          log("[message] non-JSON:", event.data);
+          return;
+        }
+
+        // Join confirmation
+        if (msg.event === "phx_reply" && msg.ref === joinRef) {
+          log("[reply] Joined heart rate channel");
+          return;
+        }
+
+        // Heart rate update
+        if (msg.event === "hr_update") {
+          const hr = msg?.payload?.hr;
+          setHR(hr);
+          log("[hr_update]", hr);
+          return;
+        }
+
+        // Anything else
+        log("[message]", msg);
+      };
+
+      ws.onerror = (err) => {
+        log("[error]", err);
+      };
+
+      ws.onclose = (event) => {
+        log("[close]", { code: event.code, reason: event.reason, wasClean: event.wasClean });
+        setStatus("disconnected");
+        connectBtn.disabled = false;
+        disconnectBtn.disabled = true;
+        stopHeartbeat();
+        ws = null;
+      };
+    }
+
+    function disconnect() {
+      const deviceId = deviceIdInput.value.trim();
+      if (!ws) return;
+
+      try {
+        // Leave channel (best effort)
+        const leaveMsg = {
+          topic: `hr:${deviceId}`,
+          event: "phx_leave",
+          payload: {},
+          ref: Date.now().toString()
+        };
+        ws.send(JSON.stringify(leaveMsg));
+        log("[send] phx_leave", leaveMsg);
+      } catch (e) {
+        // ignore
+      }
+
+      stopHeartbeat();
+      ws.close();
+    }
+
+    connectBtn.addEventListener("click", connect);
+    disconnectBtn.addEventListener("click", disconnect);
+
+    clearBtn.addEventListener("click", () => {
+      try { localStorage.removeItem(STORAGE_KEY); } catch {}
+      deviceIdInput.value = "";
+      apiKeyInput.value = "";
+      rememberEl.checked = false;
+      log("[local] cleared saved values");
+    });
+
+    deviceIdInput.value = DEVICE_ID;
+    apiKeyInput.value = API_KEY;
+    rememberEl.checked = !!(saved && saved.deviceId && saved.apiKey);
+  </script>
+</body>
+</html>
