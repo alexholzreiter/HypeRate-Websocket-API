@@ -4,17 +4,80 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>HypeRate WS Minimal Demo</title>
+
+  <!-- Dark UI hints for browsers -->
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#0b0f14" />
+
+  <!-- Favicon (place your provided image as docs/favicon.png) -->
+  <link rel="icon" type="image/png" sizes="256x256" href="favicon.png" />
+  <link rel="apple-touch-icon" sizes="256x256" href="favicon.png" />
+
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; line-height: 1.4; }
+    :root { color-scheme: dark; }
+
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      margin: 24px;
+      line-height: 1.4;
+      background: #0b0f14;
+      color: #e6edf3;
+    }
+
     .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
-    label { display: grid; gap: 6px; font-size: 14px; }
-    input { padding: 10px 12px; font-size: 14px; min-width: 260px; }
-    button { padding: 10px 14px; font-size: 14px; cursor: pointer; }
-    .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; border: 1px solid #ddd; }
-    pre { background: #0b0f14; color: #e6edf3; padding: 14px; border-radius: 12px; overflow: auto; max-height: 55vh; }
+
+    label { display: grid; gap: 6px; font-size: 14px; color: #c9d1d9; }
+
+    input {
+      padding: 10px 12px;
+      font-size: 14px;
+      min-width: 260px;
+      background: #0f1720;
+      color: #e6edf3;
+      border: 1px solid #2b3642;
+      border-radius: 10px;
+      outline: none;
+    }
+    input:focus { border-color: #445566; }
+
+    button {
+      padding: 10px 14px;
+      font-size: 14px;
+      cursor: pointer;
+      background: #17212b;
+      color: #e6edf3;
+      border: 1px solid #2b3642;
+      border-radius: 10px;
+    }
+    button:hover { filter: brightness(1.06); }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .pill {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid #2b3642;
+      background: #0f1720;
+      color: #c9d1d9;
+    }
+
+    pre {
+      background: #05080c;
+      color: #e6edf3;
+      padding: 14px;
+      border-radius: 12px;
+      overflow: auto;
+      max-height: 55vh;
+      border: 1px solid #1f2a36;
+    }
+
     code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
+    a { color: #7aa2f7; }
   </style>
 </head>
+
 <body>
   <h1>HypeRate WebSocket – Minimal Heart Rate Demo</h1>
   <p>
@@ -22,15 +85,16 @@
     and prints <code>hr_update</code> messages.
   </p>
 
-<p class="pill" style="display:inline-block; margin: 8px 0 16px 0;">
-  Public demo: enter your <strong>Device ID</strong> and <strong>API Key</strong> locally. Keys are never shipped with this page.
-</p>
+  <p class="pill" style="display:inline-block; margin: 8px 0 16px 0;">
+    Public demo: enter your <strong>Device ID</strong> and <strong>API Key</strong> locally. Keys are never shipped with this page.
+  </p>
 
   <div class="row">
     <label>
       Device ID
       <input id="deviceId" placeholder="abc123" />
     </label>
+
     <label>
       API Key (token)
       <input id="apiKey" placeholder="YOUR_API_KEY" />
@@ -47,25 +111,26 @@
     <span class="pill" id="status">disconnected</span>
     <span class="pill" id="hr">HR: —</span>
   </div>
-<h2>Log</h2>
+
+  <h2>Log</h2>
   <pre id="log"></pre>
 
   <script>
-    // ---- Quick config (optional): loaded from config.js if present ----
     // Optional: you can define window.HYPERATE_CONFIG in the console for quick testing:
-// window.HYPERATE_CONFIG = { DEVICE_ID: "abc123", API_KEY: "..." }
-const CONFIG = window.HYPERATE_CONFIG || {};
+    // window.HYPERATE_CONFIG = { DEVICE_ID: "abc123", API_KEY: "..." }
+    const CONFIG = window.HYPERATE_CONFIG || {};
 
-// Local-only persistence (never leaves the browser)
-const STORAGE_KEY = "hyperate_ws_demo_v1";
-const saved = (() => {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"); }
-  catch { return null; }
-})();
+    // Local-only persistence (never leaves the browser)
+    const STORAGE_KEY = "hyperate_ws_demo_v1";
+    const saved = (() => {
+      try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"); }
+      catch { return null; }
+    })();
 
-const DEVICE_ID = (saved?.deviceId || CONFIG.DEVICE_ID || "").toString();
-const API_KEY   = (saved?.apiKey   || CONFIG.API_KEY   || "").toString();
-const $ = (id) => document.getElementById(id);
+    const DEVICE_ID = (saved?.deviceId || CONFIG.DEVICE_ID || "").toString();
+    const API_KEY   = (saved?.apiKey   || CONFIG.API_KEY   || "").toString();
+
+    const $ = (id) => document.getElementById(id);
 
     const logEl = $("log");
     const statusEl = $("status");
@@ -125,15 +190,15 @@ const $ = (id) => document.getElementById(id);
 
       const url = `wss://app.hyperate.io/ws/${encodeURIComponent(deviceId)}?token=${encodeURIComponent(apiKey)}`;
 
-// Save or clear locally (optional)
-try {
-  if (rememberEl.checked) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ deviceId, apiKey }));
-    log("[local] saved credentials (localStorage)");
-  } else {
-    localStorage.removeItem(STORAGE_KEY);
-  }
-} catch {}
+      // Save or clear locally (optional)
+      try {
+        if (rememberEl.checked) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ deviceId, apiKey }));
+          log("[local] saved credentials (localStorage)");
+        } else {
+          localStorage.removeItem(STORAGE_KEY);
+        }
+      } catch {}
 
       log("Connecting to:", url);
       setStatus("connecting");
