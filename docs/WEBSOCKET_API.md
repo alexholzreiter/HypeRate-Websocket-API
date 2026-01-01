@@ -76,20 +76,6 @@ Heart rate values are broadcasted on the `hr:DEVICE_ID` topic.
 
 ---
 
-## Sending Heart Rate Data (Optional)
-
-If your application publishes heart rate data:
-
-```js
-ws.send(JSON.stringify({
-  topic: `hr:${deviceId}`,
-  event: "hr_update",
-  payload: { hr: 82 },
-  ref: Date.now().toString()
-}));
-```
-
----
 
 ## Keep the Connection Alive (Heartbeat)
 
