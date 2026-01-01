@@ -1,9 +1,13 @@
 # HypeRate WebSocket API – Heart Rate Only
 
-This document describes how to connect to the **HypeRate WebSocket API** to receive and optionally send **heart rate data**.
+This document describes how to connect to the **HypeRate WebSocket API**
+to **receive real-time heart rate data** for a specific device.
 
-> Public documentation – heart rate only.  
-> No IRL data, no admin endpoints.
+> **Read-only consumer API**  
+> Heart rate data is produced by HypeRate devices and streamed to connected clients.  
+> Clients **do not send** heart rate data to HypeRate.
+
+No IRL data. No admin endpoints.
 
 ---
 
@@ -16,6 +20,8 @@ wss://app.hyperate.io/ws/:deviceId?token=YOUR_API_KEY
 ### Parameters
 - `deviceId` — the device ID you want to subscribe to
 - `token` — your API key
+
+---
 
 ## Get an API Key
 
@@ -47,12 +53,13 @@ ws.onopen = () => {
 ws.onmessage = (event) => {
   const msg = JSON.parse(event.data);
 
-  // Join confirmation
+  // Ignore join confirmation
   if (msg.event === "phx_reply") return;
 
-  // Heart rate update
+  // Receive heart rate updates
   if (msg.event === "hr_update") {
-    console.log("Heart Rate:", msg.payload.hr);
+    const heartRate = msg.payload.hr;
+    console.log("Heart Rate:", heartRate);
   }
 };
 ```
@@ -61,7 +68,11 @@ ws.onmessage = (event) => {
 
 ## Heart Rate Updates (Server → Client)
 
-Heart rate values are broadcasted on the `hr:DEVICE_ID` topic.
+After joining `hr:DEVICE_ID`, your client will receive heart rate updates
+as `hr_update` events.
+
+- Event name: `hr_update`
+- Heart rate value: `payload.hr` (number, BPM)
 
 ### Example
 
@@ -74,12 +85,14 @@ Heart rate values are broadcasted on the `hr:DEVICE_ID` topic.
 }
 ```
 
----
+> You may also receive system messages (e.g. `phx_reply`).  
+> These can safely be ignored unless needed for debugging.
 
+---
 
 ## Keep the Connection Alive (Heartbeat)
 
-Send a heartbeat every **15 seconds**:
+Send a heartbeat every **15 seconds** to keep the connection open.
 
 ```js
 setInterval(() => {
@@ -111,6 +124,7 @@ setTimeout(() => ws.close(), 100);
 
 ## Notes
 
-- Never commit or share API keys in public repos/issues/screenshots
-- Use `wss://` in production
+- This API is **read-only** for consumers
+- Never commit or share API keys in public repos, issues, or screenshots
+- Always use `wss://` in production
 - Always send heartbeats to avoid idle timeouts
